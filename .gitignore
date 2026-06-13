@@ -4,5 +4,8 @@ pkg
 .crap
 *.out
 *.md
+!README.md
 patients
 *.fa.gz
+__pycache__/
+*.pyc

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare patient-level inputs for SyntheticCancerGenome proof-of-concept runs.
+"""Prepare patient-level inputs for SyntheticCancerGenome runs.
 
 This script does two jobs:
 
@@ -530,7 +530,7 @@ def write_vcf(records: list[VariantRecord], path: Path, lengths: dict[str, int] 
     info_keys = sorted({key for record in records for key in record.info})
     with path.open("w") as handle:
         handle.write("##fileformat=VCFv4.2\n")
-        handle.write("##source=prepare_patient_inputs.py\n")
+        handle.write("##source=patient_workflow_utils.py\n")
         for key in info_keys:
             definition = KNOWN_INFO_DEFINITIONS.get(
                 key,
