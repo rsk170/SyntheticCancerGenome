@@ -1,20 +1,22 @@
 #!/bin/bash
 #SBATCH --job-name=validate_t0_ids
-#SBATCH --chdir=/gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome
 #SBATCH --output=validate_t0_ids_%j.out
 #SBATCH --error=validate_t0_ids_%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=1-00:00:00
-#SBATCH --account=bsc82
-#SBATCH --qos=gp_bscls
 
 set -euo pipefail
 
-module purge
-module load oneapi hdf5 python/3.12.1
+REPO_ROOT="${REPO_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+cd "$REPO_ROOT"
 
-PATIENT=79ce1d89-46d2-5513-c704-212aa1ed97d2
+if command -v module >/dev/null 2>&1 && [ "${LOAD_MODULES:-1}" = "1" ]; then
+  module purge
+  module load oneapi hdf5 python/3.12.1
+fi
+
+PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
 PATIENT_DIR="patients/$PATIENT"
 if [ -d "$PATIENT_DIR/tumor_fastq_t0" ]; then
   TUMOR_DIR="$PATIENT_DIR/tumor_fastq_t0"
@@ -40,7 +42,7 @@ for f in "$R1" "$R2"; do
 done
 
 echo "=== Full R1/R2 pair-order and clone-label check ==="
-python scripts/validate_fastq_pair_ids.py \
+python scripts/validation/validate_fastq_pair_ids.py \
   --read1 "$R1" \
   --read2 "$R2" \
   --output-json "$PAIR_JSON"

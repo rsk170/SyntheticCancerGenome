@@ -1,59 +1,74 @@
 #!/bin/bash
 #SBATCH --job-name=scg_timepoint_clone
-#SBATCH --chdir=/gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome
 #SBATCH --output=timepoint_clone_%j.out
 #SBATCH --error=timepoint_clone_%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
 #SBATCH --time=2-00:00:00
-#SBATCH --account=bsc82
-#SBATCH --qos=gp_bscls
 
 set -euo pipefail
 
-TIMEPOINT="${1:?Usage: sbatch generate_timepoint_clone.sh t1 clone_1 [--dry-run]}"
-CLONE_ID="${2:?Usage: sbatch generate_timepoint_clone.sh t1 clone_1 [--dry-run]}"
+REPO_ROOT="${REPO_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+cd "$REPO_ROOT"
+
+TIMEPOINT="${1:?Usage: sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_1 [--dry-run]}"
+CLONE_ID="${2:?Usage: sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_1 [--dry-run]}"
 MODE="${3:-}"
 DRY_RUN_ARGS=()
 if [ "$MODE" = "--dry-run" ]; then
   DRY_RUN_ARGS=(--dry-run)
 elif [ -n "$MODE" ]; then
   echo "Unknown mode: $MODE" >&2
-  echo "Usage: sbatch generate_timepoint_clone.sh t1 clone_1 [--dry-run]" >&2
+  echo "Usage: sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_1 [--dry-run]" >&2
   exit 2
 fi
 
-module purge
-module load oneapi hdf5 python/3.12.1
-module load samtools/1.19.2
-module load htslib/1.19.1
+if command -v module >/dev/null 2>&1 && [ "${LOAD_MODULES:-1}" = "1" ]; then
+  module purge
+  module load oneapi hdf5 python/3.12.1
+  module load samtools/1.19.2
+  module load htslib/1.19.1
+fi
 
-export PYTHONUSERBASE=/gpfs/projects/bsc82/bsc720159/python_packages
-export PATH="$PYTHONUSERBASE/bin:$HOME/.rbbt/software/opt/bin:$PATH"
+if [ -n "${PYTHONUSERBASE:-}" ]; then
+  export PATH="$PYTHONUSERBASE/bin:$PATH"
+fi
+RBBT_OPT_BIN="${RBBT_OPT_BIN:-$HOME/.rbbt/software/opt/bin}"
+if [ -d "$RBBT_OPT_BIN" ]; then
+  export PATH="$RBBT_OPT_BIN:$PATH"
+fi
 
-RBBT_ENV=/gpfs/projects/bsc82/bsc720159/conda_envs/rbbt_env
-RUBY_BIN="$RBBT_ENV/bin/ruby"
-RUBY_GEM_HOME="$RBBT_ENV/share/rubygems"
+RBBT_ENV="${RBBT_ENV:-}"
+if [ -z "${RUBY_BIN:-}" ]; then
+  if [ -n "$RBBT_ENV" ]; then
+    RUBY_BIN="$RBBT_ENV/bin/ruby"
+  else
+    RUBY_BIN="ruby"
+  fi
+fi
 USER_GEM_HOME="$HOME/.local/share/gem/ruby/3.3.0"
 
-export GEM_HOME="$RUBY_GEM_HOME"
-if [ -d "$USER_GEM_HOME" ]; then
-  export GEM_PATH="$RUBY_GEM_HOME:$USER_GEM_HOME"
-else
-  export GEM_PATH="$RUBY_GEM_HOME"
+if [ -n "$RBBT_ENV" ]; then
+  RUBY_GEM_HOME="${RUBY_GEM_HOME:-$RBBT_ENV/share/rubygems}"
+  export GEM_HOME="$RUBY_GEM_HOME"
+  if [ -d "$USER_GEM_HOME" ]; then
+    export GEM_PATH="$RUBY_GEM_HOME:$USER_GEM_HOME"
+  else
+    export GEM_PATH="$RUBY_GEM_HOME"
+  fi
+  export PATH="$RUBY_GEM_HOME/bin:$PATH"
 fi
-export PATH="$RUBY_GEM_HOME/bin:$PATH"
 
-PATIENT=79ce1d89-46d2-5513-c704-212aa1ed97d2
-MANIFEST="patients/$PATIENT/prepared_hg38_${TIMEPOINT}/final_clone_mutations/patient_manifest.final_clone_mutations.csv"
-OUT_DIR="patients/$PATIENT/tumor_clone_fastqs_independent/$TIMEPOINT"
+PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
+MANIFEST="${MANIFEST:-patients/$PATIENT/prepared_hg38_${TIMEPOINT}/final_clone_mutations/patient_manifest.final_clone_mutations.csv}"
+OUT_DIR="${OUT_DIR:-patients/$PATIENT/tumor_clone_fastqs_independent/$TIMEPOINT}"
 METRICS_DIR="patients/$PATIENT/run_metrics"
 RUN_ID="${TIMEPOINT}_${CLONE_ID}_${SLURM_JOB_ID:-manual}"
 TIME_METRICS="$METRICS_DIR/${RUN_ID}.time.txt"
 RUN_SUMMARY="$METRICS_DIR/${RUN_ID}.summary.txt"
 
-NEAT_CPUS=8
-SAMTOOLS_CPUS=16
+NEAT_CPUS="${NEAT_CPUS:-8}"
+SAMTOOLS_CPUS="${SAMTOOLS_CPUS:-16}"
 START_EPOCH=$(date +%s)
 
 mkdir -p "$METRICS_DIR"
@@ -122,7 +137,7 @@ echo "samtools merge threads: $SAMTOOLS_CPUS"
 
 set +e
 /usr/bin/time -v -o "$TIME_METRICS" \
-python scripts/generate_patient_clone_tumor_fastqs.py \
+python scripts/pipeline/generate_patient_clone_tumor_fastqs.py \
   "$MANIFEST" \
   --clone-id "$CLONE_ID" \
   --out-dir "$OUT_DIR" \

@@ -1,26 +1,28 @@
 #!/bin/bash
 #SBATCH --job-name=validate_t0_vc
-#SBATCH --chdir=/gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome
 #SBATCH --output=validate_t0_vc_%j.out
 #SBATCH --error=validate_t0_vc_%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
 #SBATCH --time=2-00:00:00
-#SBATCH --account=bsc82
-#SBATCH --qos=gp_bscls
 
 set -euo pipefail
 
-module purge
-module load oneapi hdf5
-module load bwa/0.7.17
-module load samtools/1.19.2
-module load java-openjdk/17.0.11+9
-module load gatk/4.5.0.0
-module load bcftools/1.19
-module load htslib/1.19.1
+REPO_ROOT="${REPO_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+cd "$REPO_ROOT"
 
-PATIENT=79ce1d89-46d2-5513-c704-212aa1ed97d2
+if command -v module >/dev/null 2>&1 && [ "${LOAD_MODULES:-1}" = "1" ]; then
+  module purge
+  module load oneapi hdf5
+  module load bwa/0.7.17
+  module load samtools/1.19.2
+  module load java-openjdk/17.0.11+9
+  module load gatk/4.5.0.0
+  module load bcftools/1.19
+  module load htslib/1.19.1
+fi
+
+PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
 PATIENT_DIR="patients/$PATIENT"
 OUT_DIR="$PATIENT_DIR/validation_t0"
 REF_DIR="$OUT_DIR/reference"
@@ -104,10 +106,10 @@ find_reference() {
     "$PATIENT_DIR/prepared_hg38_t2/ref_cache/hg38/hg38.fa.gz"
     "$PWD/hg38.fa"
     "$PWD/hg38.fa.gz"
-    "/gpfs/projects/bsc82/bsc720159/hg38.fa"
-    "/gpfs/projects/bsc82/bsc720159/hg38.fa.gz"
-    "/gpfs/projects/bsc82/bsc720159/references/hg38.fa"
-    "/gpfs/projects/bsc82/bsc720159/references/hg38.fa.gz"
+    "$PWD/reference/hg38.fa"
+    "$PWD/reference/hg38.fa.gz"
+    "$PWD/references/hg38.fa"
+    "$PWD/references/hg38.fa.gz"
     "$HOME/.rbbt/share/organisms/Hsa/hg38/hg38.fa"
     "$HOME/.rbbt/share/organisms/Hsa/hg38/hg38.fa.gz"
   )
@@ -128,7 +130,7 @@ if [ -z "$SOURCE_REF" ]; then
 Could not find a standard hg38 FASTA.
 
 Set HG38_REF when submitting, for example:
-  sbatch --export=ALL,HG38_REF=/path/to/hg38.fa validate_t0_variant_calling.sh
+  sbatch --export=ALL,HG38_REF=/path/to/hg38.fa scripts/validation/validate_t0_variant_calling.sh
 
 Do not use the patient sex-aware ploidy reference here; validation alignment should use standard hg38 contig names.
 EOF

@@ -1,25 +1,28 @@
 #!/bin/bash
 #SBATCH --job-name=validate_t0_support
-#SBATCH --chdir=/gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome
 #SBATCH --output=validate_t0_support_%j.out
 #SBATCH --error=validate_t0_support_%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=04:00:00
-#SBATCH --account=bsc82
-#SBATCH --qos=gp_bscls
 
 set -euo pipefail
 
-module purge
-module load oneapi hdf5 python/3.12.1
-module load samtools/1.19.2
-module load htslib/1.19.1
+REPO_ROOT="${REPO_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+cd "$REPO_ROOT"
 
-export PYTHONUSERBASE=/gpfs/projects/bsc82/bsc720159/python_packages
-export PATH="$PYTHONUSERBASE/bin:$PATH"
+if command -v module >/dev/null 2>&1 && [ "${LOAD_MODULES:-1}" = "1" ]; then
+  module purge
+  module load oneapi hdf5 python/3.12.1
+  module load samtools/1.19.2
+  module load htslib/1.19.1
+fi
 
-PATIENT=79ce1d89-46d2-5513-c704-212aa1ed97d2
+if [ -n "${PYTHONUSERBASE:-}" ]; then
+  export PATH="$PYTHONUSERBASE/bin:$PATH"
+fi
+
+PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
 PATIENT_DIR="patients/$PATIENT"
 OUT_DIR="$PATIENT_DIR/validation_t0"
 SUPPORT_DIR="$OUT_DIR/read_support"
@@ -78,7 +81,7 @@ samtools quickcheck -v "$TUMOR_BAM" "$NORMAL_BAM"
 echo "=== Count read support at truth variants ==="
 set +e
 /usr/bin/time -v -o "$TIME_METRICS" \
-python scripts/check_truth_variant_read_support.py \
+python scripts/validation/check_truth_variant_read_support.py \
   --truth-vcf "$TRUTH_VCF" \
   --called-vcf "$CALLED_VCF" \
   --tumor-bam "$TUMOR_BAM" \

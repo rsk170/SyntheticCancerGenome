@@ -97,7 +97,7 @@ patients/PATIENT_ID/diploid_genotype_germline_hg38.out
 ```
 
 The current manifest builder records the germline path, so this file must exist
-before running `scripts/prepare_patient_manifest.py`. In a fresh run, generate it
+before running `scripts/pipeline/prepare_patient_manifest.py`. In a fresh run, generate it
 with the Ruby/Rbbt command in Step 1. If it was generated previously, copy or
 symlink the existing result to the path above.
 
@@ -134,8 +134,15 @@ steps must be run through Slurm.
 Run Slurm jobs from the cluster repository root:
 
 ```bash
-cd /gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome
+cd /path/to/SyntheticCancerGenome
 ```
+
+The Slurm wrappers avoid machine-specific absolute paths. If you submit them
+from another directory, set `REPO_ROOT=/path/to/SyntheticCancerGenome`. If your
+cluster requires an account or QOS, pass those at submission time, for example
+`sbatch --account=YOUR_ACCOUNT --qos=YOUR_QOS ...`. On systems without the same
+environment modules, set `LOAD_MODULES=0` and provide the required tools on
+`PATH`.
 
 The long-running HPC steps are:
 
@@ -205,10 +212,10 @@ This command assumes the patched Ruby/Rbbt environment is already working,
 including access to `liftOver` and the required cached resources under
 `~/.rbbt/share`.
 
-On the cluster, use the Ruby executable from the Rbbt environment, for example:
+On a cluster, use the Ruby executable from the Rbbt environment, for example:
 
 ```bash
-export RUBY_BIN=/gpfs/projects/bsc82/bsc720159/conda_envs/rbbt_env/bin/ruby
+export RUBY_BIN=/path/to/rbbt_env/bin/ruby
 ```
 
 The first run may download/cache upstream resources under `~/.rbbt/share`,
@@ -234,19 +241,19 @@ clone MAF files, and the path to the shared diploid germline generated in Step 1
 ```bash
 PATIENT=79ce1d89-46d2-5513-c704-212aa1ed97d2
 
-python3 scripts/prepare_patient_manifest.py patients/$PATIENT \
+python3 scripts/pipeline/prepare_patient_manifest.py patients/$PATIENT \
   --sex female \
   --normal-depth 30 \
   --tumor-depth 100 \
   --timepoint t0
 
-python3 scripts/prepare_patient_manifest.py patients/$PATIENT \
+python3 scripts/pipeline/prepare_patient_manifest.py patients/$PATIENT \
   --sex female \
   --normal-depth 30 \
   --tumor-depth 100 \
   --timepoint t1
 
-python3 scripts/prepare_patient_manifest.py patients/$PATIENT \
+python3 scripts/pipeline/prepare_patient_manifest.py patients/$PATIENT \
   --sex female \
   --normal-depth 30 \
   --tumor-depth 100 \
@@ -270,7 +277,7 @@ liftover to `hg38`, normalization against `hg38`, splitting and filtering.
 Example:
 
 ```bash
-python3 scripts/convert_patient_mafs_hg19_to_hg38.py \
+python3 scripts/pipeline/convert_patient_mafs_hg19_to_hg38.py \
   patients/$PATIENT/prepared_hg38_t0/patient_manifest.csv \
   --hg19-fasta /path/to/hg19.fa.gz \
   --hg38-fasta /path/to/hg38.fa.gz \
@@ -281,14 +288,14 @@ python3 scripts/convert_patient_mafs_hg19_to_hg38.py \
 Repeat for `t1` and `t2`:
 
 ```bash
-python3 scripts/convert_patient_mafs_hg19_to_hg38.py \
+python3 scripts/pipeline/convert_patient_mafs_hg19_to_hg38.py \
   patients/$PATIENT/prepared_hg38_t1/patient_manifest.csv \
   --hg19-fasta /path/to/hg19.fa.gz \
   --hg38-fasta /path/to/hg38.fa.gz \
   --chain /path/to/hg19ToHg38.over.chain.gz \
   --picard-jar /path/to/picard.jar
 
-python3 scripts/convert_patient_mafs_hg19_to_hg38.py \
+python3 scripts/pipeline/convert_patient_mafs_hg19_to_hg38.py \
   patients/$PATIENT/prepared_hg38_t2/patient_manifest.csv \
   --hg19-fasta /path/to/hg19.fa.gz \
   --hg38-fasta /path/to/hg38.fa.gz \
@@ -313,13 +320,13 @@ founding mutations, while descendant clones receive the founding mutations plus
 their own clone-specific variants.
 
 ```bash
-python3 scripts/build_final_clone_mutations.py \
+python3 scripts/pipeline/build_final_clone_mutations.py \
   patients/$PATIENT/prepared_hg38_t0/patient_manifest.csv
 
-python3 scripts/build_final_clone_mutations.py \
+python3 scripts/pipeline/build_final_clone_mutations.py \
   patients/$PATIENT/prepared_hg38_t1/patient_manifest.csv
 
-python3 scripts/build_final_clone_mutations.py \
+python3 scripts/pipeline/build_final_clone_mutations.py \
   patients/$PATIENT/prepared_hg38_t2/patient_manifest.csv
 ```
 
@@ -336,7 +343,7 @@ patients/$PATIENT/prepared_hg38_t*/final_clone_mutations/final_clone_mutation_su
 Create one sex-aware patient reference:
 
 ```bash
-python3 scripts/create_sex_aware_reference.py \
+python3 scripts/pipeline/create_sex_aware_reference.py \
   patients/$PATIENT/prepared_hg38_t0/patient_manifest.csv \
   --reference-fasta /path/to/hg38.fa.gz
 ```
@@ -344,7 +351,7 @@ python3 scripts/create_sex_aware_reference.py \
 Create one sex-aware patient germline:
 
 ```bash
-python3 scripts/create_sex_aware_germline.py \
+python3 scripts/pipeline/create_sex_aware_germline.py \
   patients/$PATIENT/prepared_hg38_t0/patient_manifest.csv \
   --strict-diploid
 ```
@@ -368,20 +375,24 @@ subfolders to the cluster before starting Slurm jobs.
 Example:
 
 ```bash
+REMOTE_USER=your_username
+REMOTE_HOST=your_transfer_host
+REMOTE_REPO=/path/to/SyntheticCancerGenome
+
 rsync -av patients/$PATIENT/prepared_hg38_t0 \
-  bsc720159@transfer1.bsc.es:/gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome/patients/$PATIENT/
+  $REMOTE_USER@$REMOTE_HOST:$REMOTE_REPO/patients/$PATIENT/
 
 rsync -av patients/$PATIENT/prepared_hg38_t1 \
-  bsc720159@transfer1.bsc.es:/gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome/patients/$PATIENT/
+  $REMOTE_USER@$REMOTE_HOST:$REMOTE_REPO/patients/$PATIENT/
 
 rsync -av patients/$PATIENT/prepared_hg38_t2 \
-  bsc720159@transfer1.bsc.es:/gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome/patients/$PATIENT/
+  $REMOTE_USER@$REMOTE_HOST:$REMOTE_REPO/patients/$PATIENT/
 ```
 
 From this point onward, run jobs from the cluster repository root:
 
 ```bash
-cd /gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome
+cd /path/to/SyntheticCancerGenome
 ```
 
 ## 🧪 Step 7: Generate The Matched Normal FASTQs
@@ -389,7 +400,7 @@ cd /gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome
 Submit the normal FASTQ job through Slurm:
 
 ```bash
-sbatch generate_normal_fastq.sh
+sbatch scripts/slurm/generate_normal_fastq.sh
 ```
 
 Expected outputs:
@@ -405,22 +416,22 @@ The final workflow generates independent clone FASTQ pairs at the depth needed
 for each timepoint. The generic Slurm wrapper is:
 
 ```text
-generate_timepoint_clone.sh
+scripts/slurm/generate_timepoint_clone.sh
 ```
 
 Usage:
 
 ```bash
-sbatch generate_timepoint_clone.sh TIMEPOINT CLONE_ID
+sbatch scripts/slurm/generate_timepoint_clone.sh TIMEPOINT CLONE_ID
 ```
 
 Examples:
 
 ```bash
-sbatch generate_timepoint_clone.sh t1 clone_1
-sbatch generate_timepoint_clone.sh t1 clone_2
-sbatch generate_timepoint_clone.sh t1 clone_3
-sbatch generate_timepoint_clone.sh t2 clone_1
+sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_1
+sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_2
+sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_3
+sbatch scripts/slurm/generate_timepoint_clone.sh t2 clone_1
 ```
 
 The wrapper reads:
@@ -463,10 +474,18 @@ ln -s ../../tumor_clone_fastqs_max_depth/clone_4 \
 After all active clone FASTQs for a timepoint exist, merge them into a single
 tumour FASTQ pair.
 
-Example for `t0`:
+Submit the merge through Slurm:
 
 ```bash
-python scripts/merge_patient_tumor_fastqs.py \
+sbatch scripts/slurm/merge_timepoint_tumor.sh t0
+sbatch scripts/slurm/merge_timepoint_tumor.sh t1
+sbatch scripts/slurm/merge_timepoint_tumor.sh t2
+```
+
+The wrapper calls the underlying merge script. A direct command for `t0` is:
+
+```bash
+python scripts/pipeline/merge_patient_tumor_fastqs.py \
   patients/$PATIENT/prepared_hg38_t0/final_clone_mutations/patient_manifest.final_clone_mutations.csv \
   --clone-fastq-dir patients/$PATIENT/tumor_clone_fastqs_independent/t0 \
   --out-dir patients/$PATIENT/tumor_fastq_t0 \
@@ -500,7 +519,7 @@ clone labels in read names match the expected clone mixture
 For `t0`:
 
 ```bash
-sbatch validate_t0_fastq_ids.sh
+sbatch scripts/validation/validate_t0_fastq_ids.sh
 ```
 
 Important outputs:
@@ -528,7 +547,7 @@ compares PASS calls against the expected truth set.
 
 ```bash
 sbatch --export=ALL,HG38_REF=patients/$PATIENT/prepared_hg38_t1/ref_cache/hg38/hg38.fa.gz \
-  validate_t0_variant_calling.sh
+  scripts/validation/validate_t0_variant_calling.sh
 ```
 
 Important outputs:
@@ -557,7 +576,7 @@ This follow-up checks whether expected truth variants have direct tumour
 alternate-allele read support in the aligned BAM files.
 
 ```bash
-sbatch validate_t0_truth_read_support.sh
+sbatch scripts/validation/validate_t0_truth_read_support.sh
 ```
 
 Important outputs:
@@ -611,31 +630,32 @@ t0 merged tumour, 100x: 280 GB compressed FASTQ output
 Patient preparation:
 
 ```text
-scripts/prepare_patient_manifest.py
-scripts/convert_patient_mafs_hg19_to_hg38.py
-scripts/build_final_clone_mutations.py
-scripts/create_sex_aware_reference.py
-scripts/create_sex_aware_germline.py
+scripts/pipeline/prepare_patient_manifest.py
+scripts/pipeline/convert_patient_mafs_hg19_to_hg38.py
+scripts/pipeline/build_final_clone_mutations.py
+scripts/pipeline/create_sex_aware_reference.py
+scripts/pipeline/create_sex_aware_germline.py
 ```
 
 FASTQ generation and merging:
 
 ```text
-generate_normal_fastq.sh
-generate_timepoint_clone.sh
-scripts/generate_patient_normal_fastqs.py
-scripts/generate_patient_clone_tumor_fastqs.py
-scripts/merge_patient_tumor_fastqs.py
+scripts/slurm/generate_normal_fastq.sh
+scripts/slurm/generate_timepoint_clone.sh
+scripts/slurm/merge_timepoint_tumor.sh
+scripts/pipeline/generate_patient_normal_fastqs.py
+scripts/pipeline/generate_patient_clone_tumor_fastqs.py
+scripts/pipeline/merge_patient_tumor_fastqs.py
 ```
 
 Validation:
 
 ```text
-validate_t0_fastq_ids.sh
-scripts/validate_fastq_pair_ids.py
-validate_t0_variant_calling.sh
-validate_t0_truth_read_support.sh
-scripts/check_truth_variant_read_support.py
+scripts/validation/validate_t0_fastq_ids.sh
+scripts/validation/validate_fastq_pair_ids.py
+scripts/validation/validate_t0_variant_calling.sh
+scripts/validation/validate_t0_truth_read_support.sh
+scripts/validation/check_truth_variant_read_support.py
 ```
 
 ## 🧪 Quick Sanity Checks

@@ -1,34 +1,36 @@
 #!/bin/bash
 #SBATCH --job-name=scg_merge_tumor
-#SBATCH --chdir=/gpfs/projects/bsc82/bsc720159/SyntheticCancerGenome
 #SBATCH --output=merge_tumor_%x_%j.out
 #SBATCH --error=merge_tumor_%x_%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=12:00:00
-#SBATCH --account=bsc82
-#SBATCH --qos=gp_bscls
 
 set -euo pipefail
 
-TIMEPOINT="${1:?Usage: sbatch merge_timepoint_tumor.sh t2 [--dry-run]}"
+REPO_ROOT="${REPO_ROOT:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
+cd "$REPO_ROOT"
+
+TIMEPOINT="${1:?Usage: sbatch scripts/slurm/merge_timepoint_tumor.sh t2 [--dry-run]}"
 MODE="${2:-}"
 DRY_RUN_ARGS=()
 if [ "$MODE" = "--dry-run" ]; then
   DRY_RUN_ARGS=(--dry-run)
 elif [ -n "$MODE" ]; then
   echo "Unknown mode: $MODE" >&2
-  echo "Usage: sbatch merge_timepoint_tumor.sh t2 [--dry-run]" >&2
+  echo "Usage: sbatch scripts/slurm/merge_timepoint_tumor.sh t2 [--dry-run]" >&2
   exit 2
 fi
 
-module purge
-module load oneapi hdf5 python/3.12.1
+if command -v module >/dev/null 2>&1 && [ "${LOAD_MODULES:-1}" = "1" ]; then
+  module purge
+  module load oneapi hdf5 python/3.12.1
+fi
 
-PATIENT=79ce1d89-46d2-5513-c704-212aa1ed97d2
-MANIFEST="patients/$PATIENT/prepared_hg38_${TIMEPOINT}/final_clone_mutations/patient_manifest.final_clone_mutations.csv"
-CLONE_FASTQ_DIR="patients/$PATIENT/tumor_clone_fastqs_independent/$TIMEPOINT"
-OUT_DIR="patients/$PATIENT/tumor_fastq_${TIMEPOINT}"
+PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
+MANIFEST="${MANIFEST:-patients/$PATIENT/prepared_hg38_${TIMEPOINT}/final_clone_mutations/patient_manifest.final_clone_mutations.csv}"
+CLONE_FASTQ_DIR="${CLONE_FASTQ_DIR:-patients/$PATIENT/tumor_clone_fastqs_independent/$TIMEPOINT}"
+OUT_DIR="${OUT_DIR:-patients/$PATIENT/tumor_fastq_${TIMEPOINT}}"
 METRICS_DIR="patients/$PATIENT/run_metrics"
 RUN_ID="merge_${TIMEPOINT}_${SLURM_JOB_ID:-manual}"
 TIME_METRICS="$METRICS_DIR/${RUN_ID}.time.txt"
@@ -86,7 +88,7 @@ awk -F, '
 done
 
 echo "=== Merge dry run ==="
-python scripts/merge_patient_tumor_fastqs.py "$MANIFEST" \
+python scripts/pipeline/merge_patient_tumor_fastqs.py "$MANIFEST" \
   --clone-fastq-dir "$CLONE_FASTQ_DIR" \
   --out-dir "$OUT_DIR" \
   --output-prefix tumor \
@@ -101,7 +103,7 @@ fi
 echo "=== Merge tumour FASTQs ==="
 set +e
 /usr/bin/time -v -o "$TIME_METRICS" \
-python scripts/merge_patient_tumor_fastqs.py "$MANIFEST" \
+python scripts/pipeline/merge_patient_tumor_fastqs.py "$MANIFEST" \
   --clone-fastq-dir "$CLONE_FASTQ_DIR" \
   --out-dir "$OUT_DIR" \
   --output-prefix tumor \

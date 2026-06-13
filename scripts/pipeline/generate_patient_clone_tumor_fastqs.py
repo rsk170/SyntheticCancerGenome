@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "patient_manifest.final_clone_mutations.csv from "
-            "scripts/build_final_clone_mutations.py"
+            "scripts/pipeline/build_final_clone_mutations.py"
         ),
     )
     parser.add_argument(
