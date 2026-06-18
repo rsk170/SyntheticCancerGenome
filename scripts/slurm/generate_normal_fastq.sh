@@ -14,6 +14,9 @@ cd "$REPO_ROOT"
 PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
 NORMAL_TIMEPOINT="${NORMAL_TIMEPOINT:-t0}"
 MANIFEST="${MANIFEST:-patients/$PATIENT/prepared_hg38_${NORMAL_TIMEPOINT}/patient_manifest.csv}"
+REFERENCE_METADATA="${REFERENCE_METADATA:-}"
+GERMLINE_METADATA="${GERMLINE_METADATA:-}"
+OUT_DIR="${OUT_DIR:-}"
 NEAT_CPUS="${NEAT_CPUS:-8}"
 SAMTOOLS_CPUS="${SAMTOOLS_CPUS:-16}"
 
@@ -96,9 +99,24 @@ echo "Slurm CPUs reserved: ${SLURM_CPUS_PER_TASK:-64}"
 echo "NEAT chromosome-parallel workers: $NEAT_CPUS"
 echo "samtools merge threads: $SAMTOOLS_CPUS"
 echo "Manifest: $MANIFEST"
+echo "Reference metadata: ${REFERENCE_METADATA:-default}"
+echo "Germline metadata: ${GERMLINE_METADATA:-default}"
+echo "Output directory: ${OUT_DIR:-default}"
+
+EXTRA_ARGS=()
+if [ -n "$REFERENCE_METADATA" ]; then
+  EXTRA_ARGS+=(--reference-metadata "$REFERENCE_METADATA")
+fi
+if [ -n "$GERMLINE_METADATA" ]; then
+  EXTRA_ARGS+=(--germline-metadata "$GERMLINE_METADATA")
+fi
+if [ -n "$OUT_DIR" ]; then
+  EXTRA_ARGS+=(--out-dir "$OUT_DIR")
+fi
 
 python scripts/pipeline/generate_patient_normal_fastqs.py \
   "$MANIFEST" \
+  "${EXTRA_ARGS[@]}" \
   --ruby "$RUBY_BIN" \
   --neat-cpus "$NEAT_CPUS" \
   --samtools-cpus "$SAMTOOLS_CPUS" \

@@ -73,12 +73,16 @@ def skip_contig(header: str, sex: str) -> bool:
     return sex == "female" and chrom == "Y"
 
 
-def write_record(output, header: str, sequence_parts: list[str], copy_number: int) -> None:
+def write_record(output, header: str, sequence_parts: list[str], copy_number: int, line_width: int = 80) -> None:
     output.write(f">copy-{copy_number}_{header[1:]}")
     if not header.endswith("\n"):
         output.write("\n")
-    for line in sequence_parts:
-        output.write(line)
+
+    # NEAT mutation application is case-sensitive, so do not preserve soft-masked
+    # lowercase bases from the source reference.
+    sequence = "".join(part.strip() for part in sequence_parts).upper()
+    for start in range(0, len(sequence), line_width):
+        output.write(sequence[start : start + line_width] + "\n")
 
 
 def second_copy_allowed(header: str, sex: str) -> bool:
@@ -167,6 +171,7 @@ def main() -> int:
         "source_reference": str(args.reference_fasta.resolve()),
         "reference": str(output_fasta),
         "fai": str(output_fasta) + ".fai",
+        "sequence_case": "uppercase",
         "copy_rule": {
             "male": "autosomes and non-sex/non-M contigs diploid; X, Y, and M haploid",
             "female": "autosomes and X diploid; M haploid; Y contigs absent",

@@ -34,10 +34,8 @@ The final workflow is:
 10. Merge active clone FASTQs into one tumour FASTQ pair per timepoint.
 11. Validate FASTQ read identifiers, tumour-normal variant calling, and truth-site read support.
 
-Downsampling scripts are present in the repository history/workspace but are not
-part of the final recommended workflow. The final strategy is to simulate clone
-FASTQs independently at the required timepoint depths, except when an already
-generated clone FASTQ exactly matches the required depth.
+Downsampling is not part of the final recommended workflow. The final strategy
+is to simulate clone FASTQs independently at the required timepoint depths.
 
 ## 📦 Software Requirements
 
@@ -114,7 +112,7 @@ The patient used here is female and was simulated with:
 
 ```text
 normal_target_depth = 30x
-tumor_target_depth = 100x
+tumor_target_depth = 60x
 ```
 
 Clone fractions:
@@ -244,19 +242,19 @@ PATIENT=79ce1d89-46d2-5513-c704-212aa1ed97d2
 python3 scripts/pipeline/prepare_patient_manifest.py patients/$PATIENT \
   --sex female \
   --normal-depth 30 \
-  --tumor-depth 100 \
+  --tumor-depth 60 \
   --timepoint t0
 
 python3 scripts/pipeline/prepare_patient_manifest.py patients/$PATIENT \
   --sex female \
   --normal-depth 30 \
-  --tumor-depth 100 \
+  --tumor-depth 60 \
   --timepoint t1
 
 python3 scripts/pipeline/prepare_patient_manifest.py patients/$PATIENT \
   --sex female \
   --normal-depth 30 \
-  --tumor-depth 100 \
+  --tumor-depth 60 \
   --timepoint t2
 ```
 
@@ -348,6 +346,10 @@ python3 scripts/pipeline/create_sex_aware_reference.py \
   --reference-fasta /path/to/hg38.fa.gz
 ```
 
+The generated copy-labelled FASTA is written in uppercase before NEAT-based
+FASTQ simulation. This prevents soft-masked lowercase bases from the source
+`hg38` FASTA from propagating into mutation application.
+
 Create one sex-aware patient germline:
 
 ```bash
@@ -413,7 +415,9 @@ patients/$PATIENT/normal_fastq/normal_read2.fq.gz
 ## 🧬 Step 8: Generate Tumour Clone FASTQs
 
 The final workflow generates independent clone FASTQ pairs at the depth needed
-for each timepoint. The generic Slurm wrapper is:
+for each timepoint. Clone-level depth is calculated from the timepoint clone
+fraction and the total tumour target depth recorded in the manifest. The generic
+Slurm wrapper is:
 
 ```text
 scripts/slurm/generate_timepoint_clone.sh
@@ -428,10 +432,14 @@ sbatch scripts/slurm/generate_timepoint_clone.sh TIMEPOINT CLONE_ID
 Examples:
 
 ```bash
+sbatch scripts/slurm/generate_timepoint_clone.sh t0 clone_1
+sbatch scripts/slurm/generate_timepoint_clone.sh t0 clone_3
 sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_1
 sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_2
 sbatch scripts/slurm/generate_timepoint_clone.sh t1 clone_3
 sbatch scripts/slurm/generate_timepoint_clone.sh t2 clone_1
+sbatch scripts/slurm/generate_timepoint_clone.sh t2 clone_2
+sbatch scripts/slurm/generate_timepoint_clone.sh t2 clone_4
 ```
 
 The wrapper reads:
@@ -444,29 +452,6 @@ and writes:
 
 ```text
 patients/$PATIENT/tumor_clone_fastqs_independent/TIMEPOINT/CLONE_ID/
-```
-
-For this patient, existing exact-depth clone FASTQs can be reused:
-
-```text
-t0 clone_1 45x
-t0 clone_3 55x
-t2 clone_2 51x
-t2 clone_4 26x
-```
-
-For organization, these exact-depth clone folders can be symlinked into the
-timepoint-specific independent FASTQ folder. Example for `t2`:
-
-```bash
-BASE=patients/$PATIENT
-mkdir -p "$BASE/tumor_clone_fastqs_independent/t2"
-
-ln -s ../../tumor_clone_fastqs_max_depth/clone_2 \
-  "$BASE/tumor_clone_fastqs_independent/t2/clone_2"
-
-ln -s ../../tumor_clone_fastqs_max_depth/clone_4 \
-  "$BASE/tumor_clone_fastqs_independent/t2/clone_4"
 ```
 
 ## 🧵 Step 9: Merge Clone FASTQs Into Timepoint Tumours
@@ -547,27 +532,24 @@ compares PASS calls against the expected truth set.
 
 ```bash
 sbatch --export=ALL,HG38_REF=patients/$PATIENT/prepared_hg38_t1/ref_cache/hg38/hg38.fa.gz \
-  scripts/validation/validate_t0_variant_calling.sh
+  scripts/validation/validate_timepoint_variant_calling.sh t0
+
+sbatch --export=ALL,HG38_REF=patients/$PATIENT/prepared_hg38_t1/ref_cache/hg38/hg38.fa.gz \
+  scripts/validation/validate_timepoint_variant_calling.sh t1
+
+sbatch --export=ALL,HG38_REF=patients/$PATIENT/prepared_hg38_t1/ref_cache/hg38/hg38.fa.gz \
+  scripts/validation/validate_timepoint_variant_calling.sh t2
 ```
 
 Important outputs:
 
 ```text
-patients/$PATIENT/validation_t0/normal.bam
-patients/$PATIENT/validation_t0/tumor_t0.bam
-patients/$PATIENT/validation_t0/t0_truth.vcf.gz
-patients/$PATIENT/validation_t0/t0.mutect2.filtered.vcf.gz
-patients/$PATIENT/validation_t0/t0.called.pass.norm.vcf.gz
-patients/$PATIENT/validation_t0/t0_truth_vs_called_summary.tsv
-```
-
-For the current `t0` validation:
-
-```text
-truth_total = 935
-called_pass_total = 439
-truth variants recovered as PASS = 422
-PASS calls outside truth set = 17
+patients/$PATIENT/validation_TIMEPOINT/normal.bam
+patients/$PATIENT/validation_TIMEPOINT/tumor_TIMEPOINT.bam
+patients/$PATIENT/validation_TIMEPOINT/TIMEPOINT_truth.vcf.gz
+patients/$PATIENT/validation_TIMEPOINT/TIMEPOINT.mutect2.filtered.vcf.gz
+patients/$PATIENT/validation_TIMEPOINT/TIMEPOINT.called.pass.norm.vcf.gz
+patients/$PATIENT/validation_TIMEPOINT/TIMEPOINT_truth_vs_called_summary.tsv
 ```
 
 ## 🧾 Optional Step 12: Check Truth-Site Read Support
@@ -576,24 +558,17 @@ This follow-up checks whether expected truth variants have direct tumour
 alternate-allele read support in the aligned BAM files.
 
 ```bash
-sbatch scripts/validation/validate_t0_truth_read_support.sh
+sbatch scripts/validation/validate_timepoint_truth_read_support.sh t0
+sbatch scripts/validation/validate_timepoint_truth_read_support.sh t1
+sbatch scripts/validation/validate_timepoint_truth_read_support.sh t2
 ```
 
 Important outputs:
 
 ```text
-patients/$PATIENT/validation_t0/read_support/t0_truth_variant_read_support.tsv
-patients/$PATIENT/validation_t0/read_support/t0_truth_only_variant_read_support.tsv
-patients/$PATIENT/validation_t0/read_support/t0_truth_variant_read_support_summary.tsv
-```
-
-For the current `t0` validation:
-
-```text
-truth_total = 935
-truth variants with tumour ALT support = 449
-Mutect2-missed truth variants with tumour ALT support = 27
-Mutect2-missed truth variants without tumour ALT support = 486
+patients/$PATIENT/validation_TIMEPOINT/read_support/TIMEPOINT_truth_variant_read_support.tsv
+patients/$PATIENT/validation_TIMEPOINT/read_support/TIMEPOINT_truth_only_variant_read_support.tsv
+patients/$PATIENT/validation_TIMEPOINT/read_support/TIMEPOINT_truth_variant_read_support_summary.tsv
 ```
 
 ## 📊 Computational Metrics
@@ -617,12 +592,10 @@ For clone-level tumour FASTQ generation, the final workflow used:
 On MareNostrum 5, Slurm allocated one node for these jobs. In the recorded
 runs, that corresponded to 128 allocated CPUs and 125 GB memory.
 
-Example recorded outputs:
+Example recorded output from a corrected uppercase-reference clone FASTQ run:
 
 ```text
-t1 clone_1, 18x: 24 h 32 min, 3.3 GB peak RSS, 44 GB compressed FASTQ output
-t1 clone_2, 33x: 35 h 43 min, 3.3 GB peak RSS, 80 GB compressed FASTQ output
-t0 merged tumour, 100x: 280 GB compressed FASTQ output
+t0 clone_1, 27x: 31 h 57 min, 3.3 GB peak RSS, 66 GB compressed FASTQ output
 ```
 
 ## 🗂️ Important Scripts
@@ -655,6 +628,8 @@ scripts/validation/validate_t0_fastq_ids.sh
 scripts/validation/validate_fastq_pair_ids.py
 scripts/validation/validate_t0_variant_calling.sh
 scripts/validation/validate_t0_truth_read_support.sh
+scripts/validation/validate_timepoint_variant_calling.sh
+scripts/validation/validate_timepoint_truth_read_support.sh
 scripts/validation/check_truth_variant_read_support.py
 ```
 
@@ -686,6 +661,7 @@ grep -H 'exit_code=' patients/$PATIENT/run_metrics/*.summary.txt
 ## 📝 Notes
 
 - The patient-specific sex-aware reference is used for simulation.
+- The sex-aware reference is written in uppercase before simulation.
 - The standard `hg38` reference is used for downstream validation alignment and
   Mutect2 calling.
 - Clone mutation files are cumulative after `build_final_clone_mutations.py`.

@@ -62,6 +62,8 @@ fi
 PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
 MANIFEST="${MANIFEST:-patients/$PATIENT/prepared_hg38_${TIMEPOINT}/final_clone_mutations/patient_manifest.final_clone_mutations.csv}"
 OUT_DIR="${OUT_DIR:-patients/$PATIENT/tumor_clone_fastqs_independent/$TIMEPOINT}"
+REFERENCE_METADATA="${REFERENCE_METADATA:-}"
+GERMLINE_METADATA="${GERMLINE_METADATA:-}"
 METRICS_DIR="patients/$PATIENT/run_metrics"
 RUN_ID="${TIMEPOINT}_${CLONE_ID}_${SLURM_JOB_ID:-manual}"
 TIME_METRICS="$METRICS_DIR/${RUN_ID}.time.txt"
@@ -81,6 +83,8 @@ mkdir -p "$METRICS_DIR"
   echo "clone_id=$CLONE_ID"
   echo "manifest=$MANIFEST"
   echo "out_dir=$OUT_DIR"
+  echo "reference_metadata=${REFERENCE_METADATA:-default}"
+  echo "germline_metadata=${GERMLINE_METADATA:-default}"
   echo "slurm_job_id=${SLURM_JOB_ID:-NA}"
   echo "slurm_job_name=${SLURM_JOB_NAME:-NA}"
   echo "slurm_ntasks=${SLURM_NTASKS:-NA}"
@@ -131,14 +135,25 @@ echo "Timepoint: $TIMEPOINT"
 echo "Clone: $CLONE_ID"
 echo "Manifest: $MANIFEST"
 echo "Output directory: $OUT_DIR"
+echo "Reference metadata: ${REFERENCE_METADATA:-default}"
+echo "Germline metadata: ${GERMLINE_METADATA:-default}"
 echo "Mode: ${MODE:-run}"
 echo "NEAT chromosome-parallel workers: $NEAT_CPUS"
 echo "samtools merge threads: $SAMTOOLS_CPUS"
+
+EXTRA_METADATA_ARGS=()
+if [ -n "$REFERENCE_METADATA" ]; then
+  EXTRA_METADATA_ARGS+=(--reference-metadata "$REFERENCE_METADATA")
+fi
+if [ -n "$GERMLINE_METADATA" ]; then
+  EXTRA_METADATA_ARGS+=(--germline-metadata "$GERMLINE_METADATA")
+fi
 
 set +e
 /usr/bin/time -v -o "$TIME_METRICS" \
 python scripts/pipeline/generate_patient_clone_tumor_fastqs.py \
   "$MANIFEST" \
+  "${EXTRA_METADATA_ARGS[@]}" \
   --clone-id "$CLONE_ID" \
   --out-dir "$OUT_DIR" \
   --sample-name-template "{patient_id}_tumor_{timepoint}_{clone_id}" \
