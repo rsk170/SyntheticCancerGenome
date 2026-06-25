@@ -24,7 +24,7 @@ if command -v module >/dev/null 2>&1 && [ "${LOAD_MODULES:-1}" = "1" ]; then
   module load htslib/1.19.1
 fi
 
-PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
+PATIENT="${PATIENT:?Set PATIENT to the patient directory name before submission}"
 PATIENT_DIR="patients/$PATIENT"
 MANIFEST="${MANIFEST:-$PATIENT_DIR/prepared_hg38_${TIMEPOINT}/final_clone_mutations/patient_manifest.final_clone_mutations.csv}"
 OUT_DIR="${OUT_DIR:-$PATIENT_DIR/validation_${TIMEPOINT}}"
@@ -41,6 +41,7 @@ SORT_MEM="${SORT_MEM:-3G}"
 
 NORMAL_R1="${NORMAL_R1:-$PATIENT_DIR/normal_fastq/normal_read1.fq.gz}"
 NORMAL_R2="${NORMAL_R2:-$PATIENT_DIR/normal_fastq/normal_read2.fq.gz}"
+NORMAL_BAM="${NORMAL_BAM:-}"
 TUMOR_DIR="${TUMOR_DIR:-$PATIENT_DIR/tumor_fastq_${TIMEPOINT}}"
 TUMOR_R1="${TUMOR_R1:-$TUMOR_DIR/tumor_read1.fq.gz}"
 TUMOR_R2="${TUMOR_R2:-$TUMOR_DIR/tumor_read2.fq.gz}"
@@ -85,10 +86,19 @@ which bgzip
 bgzip --version
 
 echo "=== Input checks ==="
-for f in "$MANIFEST" "$NORMAL_R1" "$NORMAL_R2" "$TUMOR_R1" "$TUMOR_R2"; do
+for f in "$MANIFEST" "$TUMOR_R1" "$TUMOR_R2"; do
   test -s "$f"
   ls -lhL "$f"
 done
+if [ -n "$NORMAL_BAM" ]; then
+  test -s "$NORMAL_BAM"
+  ls -lhL "$NORMAL_BAM"
+else
+  for f in "$NORMAL_R1" "$NORMAL_R2"; do
+    test -s "$f"
+    ls -lhL "$f"
+  done
+fi
 
 mapfile -t ACTIVE_CLONES < <(
   awk -F, '
@@ -198,6 +208,14 @@ if [ ! -s "$REF.bwt" ]; then
   bwa index "$REF"
 fi
 
+if [ -L "$OUT_DIR/normal.bam" ] && [ ! -e "$OUT_DIR/normal.bam" ]; then
+  echo "Broken normal BAM symlink: $OUT_DIR/normal.bam" >&2
+  exit 2
+fi
+if [ -n "$NORMAL_BAM" ] && [ ! -e "$OUT_DIR/normal.bam" ]; then
+  ln -s "$(readlink -f "$NORMAL_BAM")" "$OUT_DIR/normal.bam"
+fi
+
 echo "=== Build ${TIMEPOINT} truth VCF and target BED ==="
 {
   bcftools view -h "${TRUTH_VCFS[0]}"
@@ -222,17 +240,33 @@ bcftools view -H "$OUT_DIR/${TIMEPOINT}_truth.vcf.gz" | wc -l
 run_validation() {
   echo "=== Align normal ==="
   if [ ! -s "$OUT_DIR/normal.bam" ]; then
+    normal_tmp="$OUT_DIR/normal.bam.tmp"
+    rm -f "$normal_tmp"
     bwa mem -t "$BWA_THREADS" -R '@RG\tID:normal\tSM:normal\tPL:ILLUMINA' \
       "$REF" "$NORMAL_R1" "$NORMAL_R2" \
-      | samtools sort -@ "$SORT_THREADS" -m "$SORT_MEM" -o "$OUT_DIR/normal.bam" -
+      | samtools sort -@ "$SORT_THREADS" -m "$SORT_MEM" -o "$normal_tmp" -
+    samtools quickcheck -v "$normal_tmp"
+    mv "$normal_tmp" "$OUT_DIR/normal.bam"
+  elif ! samtools quickcheck -v "$OUT_DIR/normal.bam"; then
+    echo "Existing normal BAM is incomplete or corrupt: $OUT_DIR/normal.bam" >&2
+    echo "Remove or replace it before restarting this validation." >&2
+    return 2
   fi
   samtools index -@ "$INDEX_THREADS" "$OUT_DIR/normal.bam"
 
   echo "=== Align tumor ${TIMEPOINT} ==="
   if [ ! -s "$OUT_DIR/tumor_${TIMEPOINT}.bam" ]; then
+    tumor_tmp="$OUT_DIR/tumor_${TIMEPOINT}.bam.tmp"
+    rm -f "$tumor_tmp"
     bwa mem -t "$BWA_THREADS" -R "@RG\tID:tumor_${TIMEPOINT}\tSM:tumor_${TIMEPOINT}\tPL:ILLUMINA" \
       "$REF" "$TUMOR_R1" "$TUMOR_R2" \
-      | samtools sort -@ "$SORT_THREADS" -m "$SORT_MEM" -o "$OUT_DIR/tumor_${TIMEPOINT}.bam" -
+      | samtools sort -@ "$SORT_THREADS" -m "$SORT_MEM" -o "$tumor_tmp" -
+    samtools quickcheck -v "$tumor_tmp"
+    mv "$tumor_tmp" "$OUT_DIR/tumor_${TIMEPOINT}.bam"
+  elif ! samtools quickcheck -v "$OUT_DIR/tumor_${TIMEPOINT}.bam"; then
+    echo "Existing tumour BAM is incomplete or corrupt: $OUT_DIR/tumor_${TIMEPOINT}.bam" >&2
+    echo "Remove it before restarting this validation." >&2
+    return 2
   fi
   samtools index -@ "$INDEX_THREADS" "$OUT_DIR/tumor_${TIMEPOINT}.bam"
 
@@ -272,16 +306,17 @@ run_validation() {
     echo -e "category\tcount"
     echo -e "truth_total\t$(bcftools view -H "$OUT_DIR/${TIMEPOINT}_truth.vcf.gz" | wc -l)"
     echo -e "called_pass_total\t$(bcftools view -H "$OUT_DIR/${TIMEPOINT}.called.pass.norm.vcf.gz" | wc -l)"
-    echo -e "truth_only\t$(grep -vc '^#' "$OUT_DIR/isec_truth_vs_called/0000.vcf" 2>/dev/null || echo 0)"
-    echo -e "called_only\t$(grep -vc '^#' "$OUT_DIR/isec_truth_vs_called/0001.vcf" 2>/dev/null || echo 0)"
-    echo -e "overlap_truth_side\t$(grep -vc '^#' "$OUT_DIR/isec_truth_vs_called/0002.vcf" 2>/dev/null || echo 0)"
-    echo -e "overlap_called_side\t$(grep -vc '^#' "$OUT_DIR/isec_truth_vs_called/0003.vcf" 2>/dev/null || echo 0)"
+    echo -e "truth_only\t$(awk '!/^#/ {n++} END {print n+0}' "$OUT_DIR/isec_truth_vs_called/0000.vcf")"
+    echo -e "called_only\t$(awk '!/^#/ {n++} END {print n+0}' "$OUT_DIR/isec_truth_vs_called/0001.vcf")"
+    echo -e "overlap_truth_side\t$(awk '!/^#/ {n++} END {print n+0}' "$OUT_DIR/isec_truth_vs_called/0002.vcf")"
+    echo -e "overlap_called_side\t$(awk '!/^#/ {n++} END {print n+0}' "$OUT_DIR/isec_truth_vs_called/0003.vcf")"
   } > "$OUT_DIR/${TIMEPOINT}_truth_vs_called_summary.tsv"
   cat "$OUT_DIR/${TIMEPOINT}_truth_vs_called_summary.tsv"
 }
 
 set +e
 TIME_PAYLOAD="$(
+  echo "set -euo pipefail"
   declare -p TIMEPOINT OUT_DIR REF NORMAL_R1 NORMAL_R2 TUMOR_R1 TUMOR_R2 \
     BWA_THREADS SORT_THREADS SORT_MEM INDEX_THREADS 2>/dev/null
   declare -f run_validation

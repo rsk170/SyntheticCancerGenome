@@ -46,7 +46,7 @@ if [ -z "${RUBY_BIN:-}" ]; then
     RUBY_BIN="ruby"
   fi
 fi
-USER_GEM_HOME="$HOME/.local/share/gem/ruby/3.3.0"
+USER_GEM_HOME="${USER_GEM_HOME:-$HOME/.local/share/gem/ruby/$("$RUBY_BIN" -e 'print RbConfig::CONFIG["ruby_version"]')}"
 
 if [ -n "$RBBT_ENV" ]; then
   RUBY_GEM_HOME="${RUBY_GEM_HOME:-$RBBT_ENV/share/rubygems}"
@@ -59,7 +59,7 @@ if [ -n "$RBBT_ENV" ]; then
   export PATH="$RUBY_GEM_HOME/bin:$PATH"
 fi
 
-PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
+PATIENT="${PATIENT:?Set PATIENT to the patient directory name before submission}"
 MANIFEST="${MANIFEST:-patients/$PATIENT/prepared_hg38_${TIMEPOINT}/final_clone_mutations/patient_manifest.final_clone_mutations.csv}"
 OUT_DIR="${OUT_DIR:-patients/$PATIENT/tumor_clone_fastqs_independent/$TIMEPOINT}"
 REFERENCE_METADATA="${REFERENCE_METADATA:-}"
@@ -71,6 +71,8 @@ RUN_SUMMARY="$METRICS_DIR/${RUN_ID}.summary.txt"
 
 NEAT_CPUS="${NEAT_CPUS:-8}"
 SAMTOOLS_CPUS="${SAMTOOLS_CPUS:-16}"
+MATERIALIZE="${MATERIALIZE:-symlink}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 START_EPOCH=$(date +%s)
 
 mkdir -p "$METRICS_DIR"
@@ -92,6 +94,7 @@ mkdir -p "$METRICS_DIR"
   echo "slurm_job_nodelist=${SLURM_JOB_NODELIST:-NA}"
   echo "neat_cpus=$NEAT_CPUS"
   echo "samtools_cpus=$SAMTOOLS_CPUS"
+  echo "materialize=$MATERIALIZE"
   echo "mode=${MODE:-run}"
   if command -v scontrol >/dev/null 2>&1 && [ -n "${SLURM_JOB_ID:-}" ]; then
     echo "=== scontrol show job ==="
@@ -100,8 +103,8 @@ mkdir -p "$METRICS_DIR"
 } > "$RUN_SUMMARY"
 
 echo "=== Environment ==="
-which python
-python --version
+command -v "$PYTHON_BIN"
+"$PYTHON_BIN" --version
 which samtools
 samtools --version | head -n 2
 command -v bgzip
@@ -140,6 +143,7 @@ echo "Germline metadata: ${GERMLINE_METADATA:-default}"
 echo "Mode: ${MODE:-run}"
 echo "NEAT chromosome-parallel workers: $NEAT_CPUS"
 echo "samtools merge threads: $SAMTOOLS_CPUS"
+echo "Materialize mode: $MATERIALIZE"
 
 EXTRA_METADATA_ARGS=()
 if [ -n "$REFERENCE_METADATA" ]; then
@@ -151,7 +155,7 @@ fi
 
 set +e
 /usr/bin/time -v -o "$TIME_METRICS" \
-python scripts/pipeline/generate_patient_clone_tumor_fastqs.py \
+"$PYTHON_BIN" scripts/pipeline/generate_patient_clone_tumor_fastqs.py \
   "$MANIFEST" \
   "${EXTRA_METADATA_ARGS[@]}" \
   --clone-id "$CLONE_ID" \
@@ -163,7 +167,7 @@ python scripts/pipeline/generate_patient_clone_tumor_fastqs.py \
   --neat-cpus "$NEAT_CPUS" \
   --samtools-cpus "$SAMTOOLS_CPUS" \
   --no-rename-reads \
-  --materialize symlink \
+  --materialize "$MATERIALIZE" \
   --overwrite \
   "${DRY_RUN_ARGS[@]}"
 CMD_EXIT=$?

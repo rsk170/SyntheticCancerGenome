@@ -3,9 +3,11 @@ pkg
 .save
 .crap
 *.out
+*.err
 *.md
 !README.md
 patients
 *.fa.gz
 __pycache__/
 *.pyc
+/validate_*_variant_calling.sh

@@ -3,9 +3,9 @@
 # The Step 8 wrapper itself uses only the Python standard library, but the
 # Ruby/Rbbt workflow calls NEAT's gen_reads.py, which imports these packages.
 
-numpy
-biopython
-matplotlib
-matplotlib-venn
-pandas
-pysam
+numpy==1.26.4
+biopython==1.87
+matplotlib==3.10.0
+matplotlib-venn==1.1.2
+pandas==2.2.3
+pysam==0.23.3

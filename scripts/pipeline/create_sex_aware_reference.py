@@ -7,6 +7,7 @@ import argparse
 import csv
 import gzip
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -156,14 +157,44 @@ def main() -> int:
     output_fasta = out_dir / f"{patient_id}.hg38.{sex}.ploidy.fa"
     metadata_path = out_dir / f"{patient_id}.hg38.{sex}.ploidy.json"
     if output_fasta.exists() and not args.force:
-        print(f"Reference already exists: {output_fasta}")
-        print("Use --force to rebuild it.")
-        return 0
+        output_fai = Path(str(output_fasta) + ".fai")
+        if (
+            output_fasta.stat().st_size > 0
+            and output_fai.exists()
+            and output_fai.stat().st_size > 0
+            and metadata_path.exists()
+            and metadata_path.stat().st_size > 0
+        ):
+            print(f"Reference already exists: {output_fasta}")
+            print("Use --force to rebuild it.")
+            return 0
+        raise SystemExit(
+            f"Incomplete existing reference outputs in {out_dir}. "
+            "Use --force to rebuild them."
+        )
+
+    if args.force:
+        for path in (output_fasta, Path(str(output_fasta) + ".fai"), metadata_path):
+            if path.exists() or path.is_symlink():
+                path.unlink()
+
+    output_tmp = output_fasta.with_name(output_fasta.name + ".tmp")
+    output_tmp_fai = Path(str(output_tmp) + ".fai")
+    for path in (output_tmp, output_tmp_fai):
+        if path.exists() or path.is_symlink():
+            path.unlink()
 
     print(f"Building {sex} sex-aware reference: {output_fasta}")
-    counts = build_reference(args.reference_fasta, output_fasta, sex)
-    print(f"Indexing reference: {output_fasta}.fai")
-    run_samtools_faidx(output_fasta)
+    try:
+        counts = build_reference(args.reference_fasta, output_tmp, sex)
+        print(f"Indexing temporary reference: {output_tmp}.fai")
+        run_samtools_faidx(output_tmp)
+        os.replace(output_tmp, output_fasta)
+        os.replace(output_tmp_fai, Path(str(output_fasta) + ".fai"))
+    finally:
+        for path in (output_tmp, output_tmp_fai):
+            if path.exists() or path.is_symlink():
+                path.unlink()
 
     metadata = {
         "patient_id": patient_id,
@@ -178,7 +209,9 @@ def main() -> int:
         }[sex],
         **counts,
     }
-    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+    metadata_tmp = metadata_path.with_name(metadata_path.name + ".tmp")
+    metadata_tmp.write_text(json.dumps(metadata, indent=2) + "\n")
+    os.replace(metadata_tmp, metadata_path)
     print(f"Wrote metadata: {metadata_path}")
     return 0
 

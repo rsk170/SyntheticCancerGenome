@@ -27,7 +27,8 @@ if command -v module >/dev/null 2>&1 && [ "${LOAD_MODULES:-1}" = "1" ]; then
   module load oneapi hdf5 python/3.12.1
 fi
 
-PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
+PATIENT="${PATIENT:?Set PATIENT to the patient directory name before submission}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 MANIFEST="${MANIFEST:-patients/$PATIENT/prepared_hg38_${TIMEPOINT}/final_clone_mutations/patient_manifest.final_clone_mutations.csv}"
 CLONE_FASTQ_DIR="${CLONE_FASTQ_DIR:-patients/$PATIENT/tumor_clone_fastqs_independent/$TIMEPOINT}"
 OUT_DIR="${OUT_DIR:-patients/$PATIENT/tumor_fastq_${TIMEPOINT}}"
@@ -59,8 +60,8 @@ mkdir -p "$METRICS_DIR"
 } > "$RUN_SUMMARY"
 
 echo "=== Environment ==="
-which python
-python --version
+command -v "$PYTHON_BIN"
+"$PYTHON_BIN" --version
 
 echo "=== Input checks ==="
 test -s "$MANIFEST"
@@ -88,7 +89,7 @@ awk -F, '
 done
 
 echo "=== Merge dry run ==="
-python scripts/pipeline/merge_patient_tumor_fastqs.py "$MANIFEST" \
+"$PYTHON_BIN" scripts/pipeline/merge_patient_tumor_fastqs.py "$MANIFEST" \
   --clone-fastq-dir "$CLONE_FASTQ_DIR" \
   --out-dir "$OUT_DIR" \
   --output-prefix tumor \
@@ -103,7 +104,7 @@ fi
 echo "=== Merge tumour FASTQs ==="
 set +e
 /usr/bin/time -v -o "$TIME_METRICS" \
-python scripts/pipeline/merge_patient_tumor_fastqs.py "$MANIFEST" \
+"$PYTHON_BIN" scripts/pipeline/merge_patient_tumor_fastqs.py "$MANIFEST" \
   --clone-fastq-dir "$CLONE_FASTQ_DIR" \
   --out-dir "$OUT_DIR" \
   --output-prefix tumor \

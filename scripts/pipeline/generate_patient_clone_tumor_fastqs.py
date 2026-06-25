@@ -509,6 +509,11 @@ def main() -> int:
     if args.dry_run:
         return 0
 
+    # Single-clone jobs share an output root but do not own its aggregate summary.
+    if args.clone_id:
+        print("Clone-specific metadata written; skipping aggregate summary.")
+        return 0
+
     summary_path = out_dir / "tumor_clone_fastqs.json"
     write_metadata(
         summary_path,

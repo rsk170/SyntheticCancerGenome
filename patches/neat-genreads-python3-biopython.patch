@@ -1,0 +1,119 @@
+diff --git a/gen_reads.py b/gen_reads.py
+index 28e3f39..6c2c52c 100755
+--- a/gen_reads.py
++++ b/gen_reads.py
+@@ -1,4 +1,4 @@
+-#!/usr/bin/env source
++#!/usr/bin/env python3
+ # encoding: utf-8
+ """ ////////////////////////////////////////////////////////////////////////////////
+    ///                                                                          ///
+diff --git a/source/SequenceContainer.py b/source/SequenceContainer.py
+index fe9fc0d..2ceccaa 100755
+--- a/source/SequenceContainer.py
++++ b/source/SequenceContainer.py
+@@ -6,7 +6,7 @@ import pickle
+ import sys
+ 
+ import numpy as np
+-from Bio.Seq import Seq
++from Bio.Seq import Seq, MutableSeq
+ 
+ from source.neat_cigar import CigarString
+ from source.probability import DiscreteDistribution, poisson_list
+@@ -33,6 +33,14 @@ IGNORE_TRINUC = False
+ COV_FRAGLEN_PERCENTILE = 10.
+ LARGE_NUMBER = 9999999999
+ 
++
++def _to_mutable(seq):
++    return MutableSeq(str(seq))
++
++
++def _to_seq(seq):
++    return Seq(str(seq))
++
+ """
+ DEFAULT MUTATION MODELS
+ """
+@@ -588,7 +596,7 @@ class SequenceContainer:
+ 
+         # MODIFY REFERENCE STRING: SNPS
+         for i in range(len(all_snps)):
+-            temp = self.sequences[i].tomutable()
++            temp = _to_mutable(self.sequences[i])
+             for j in range(len(all_snps[i])):
+                 v_pos = all_snps[i][j][0]
+ 
+@@ -599,7 +607,7 @@ class SequenceContainer:
+                     sys.exit(1)
+                 else:
+                     temp[v_pos] = all_snps[i][j][2]
+-            self.sequences[i] = temp.toseq()
++            self.sequences[i] = _to_seq(temp)
+ 
+         # organize the indels we want to insert
+         for i in range(len(all_indels)):
+@@ -829,9 +837,9 @@ class SequenceContainer:
+ 
+                 else:  # substitution errors, much easier by comparison...
+                     if str(read[3][e_pos + sse_adj[e_pos]]) == error[3]:
+-                        temp = read[3].tomutable()
++                        temp = _to_mutable(read[3])
+                         temp[e_pos + sse_adj[e_pos]] = error[4]
+-                        read[3] = temp.toseq()
++                        read[3] = _to_seq(temp)
+                     else:
+                         print('\nError, ref does not match alt while attempting to insert substitution error!\n')
+                         sys.exit(1)
+diff --git a/source/ref_func.py b/source/ref_func.py
+index 1c817d2..edf1d28 100755
+--- a/source/ref_func.py
++++ b/source/ref_func.py
+@@ -4,13 +4,21 @@ import os
+ import gzip
+ import pathlib
+ import random
+-from Bio.Seq import Seq
++from Bio.Seq import Seq, MutableSeq
+ from Bio import SeqIO
+ 
+ OK_CHR_ORD = {'A': True, 'C': True, 'G': True, 'T': True, 'U': True}
+ ALLOWED_NUCL = ['A', 'C', 'G', 'T']
+ 
+ 
++def _to_mutable(seq):
++    return MutableSeq(str(seq))
++
++
++def _to_seq(seq):
++    return Seq(str(seq))
++
++
+ def index_ref(reference_path: str) -> list:
+     """
+     Index reference fasta
+@@ -133,9 +141,9 @@ def read_ref(ref_path, ref_inds_i, n_handling, n_unknowns=True, quiet=False):
+             n_info['all'].extend(region)
+             if region[1] - region[0] <= n_handling[1]:
+                 for i in range(region[0], region[1]):
+-                    temp = my_dat.tomutable()
++                    temp = _to_mutable(my_dat)
+                     temp[i] = random.choice(ALLOWED_NUCL)
+-                    my_dat = temp.toseq()
++                    my_dat = _to_seq(temp)
+             else:
+                 n_info['big'].extend(region)
+     elif n_handling[0] == 'allChr' and n_handling[2] in OK_CHR_ORD:
+@@ -143,9 +151,9 @@ def read_ref(ref_path, ref_inds_i, n_handling, n_unknowns=True, quiet=False):
+             n_info['all'].extend(region)
+             if region[1] - region[0] <= n_handling[1]:
+                 for i in range(region[0], region[1]):
+-                    temp = my_dat.tomutable()
++                    temp = _to_mutable(my_dat)
+                     temp[i] = n_handling[2]
+-                    my_dat = temp.toseq()
++                    my_dat = _to_seq(temp)
+             else:
+                 n_info['big'].extend(region)
+     elif n_handling[0] == 'ignore':

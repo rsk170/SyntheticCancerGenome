@@ -24,7 +24,8 @@ if [ -n "${PYTHONUSERBASE:-}" ]; then
   export PATH="$PYTHONUSERBASE/bin:$PATH"
 fi
 
-PATIENT="${PATIENT:-79ce1d89-46d2-5513-c704-212aa1ed97d2}"
+PATIENT="${PATIENT:?Set PATIENT to the patient directory name before submission}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 PATIENT_DIR="patients/$PATIENT"
 OUT_DIR="${OUT_DIR:-$PATIENT_DIR/validation_${TIMEPOINT}}"
 SUPPORT_DIR="$OUT_DIR/read_support"
@@ -73,9 +74,9 @@ START_EPOCH=$(date +%s)
 } > "$RUN_SUMMARY"
 
 echo "=== Tool versions ==="
-which python
-python --version
-python - <<'PY'
+command -v "$PYTHON_BIN"
+"$PYTHON_BIN" --version
+"$PYTHON_BIN" - <<'PY'
 import pysam
 print("pysam", pysam.__version__)
 PY
@@ -94,7 +95,7 @@ samtools quickcheck -v "$TUMOR_BAM" "$NORMAL_BAM"
 echo "=== Count read support at truth variants ==="
 set +e
 /usr/bin/time -v -o "$TIME_METRICS" \
-python "$SUPPORT_SCRIPT" \
+"$PYTHON_BIN" "$SUPPORT_SCRIPT" \
   --truth-vcf "$TRUTH_VCF" \
   --called-vcf "$CALLED_VCF" \
   --tumor-bam "$TUMOR_BAM" \
